@@ -1,0 +1,7 @@
+-- Add contact information fields to companies table
+ALTER TABLE companies 
+ADD COLUMN IF NOT EXISTS website VARCHAR(255),
+ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+ADD COLUMN IF NOT EXISTS phone VARCHAR(50),
+ADD COLUMN IF NOT EXISTS address TEXT,
+ADD COLUMN IF NOT EXISTS contact_person VARCHAR(255);
