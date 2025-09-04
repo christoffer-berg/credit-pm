@@ -37,13 +37,25 @@ async def generate_section(
         
         ai_content = await generate_section_content(section_type, company, case)
         
-        section_result = supabase.table("pm_sections").insert({
-            "case_id": case_id,
-            "section_type": section_type,
-            "title": section_type.replace("_", " ").title(),
-            "ai_content": ai_content,
-            "version": 1
-        }).execute()
+        # Check if section already exists
+        existing_section = supabase.table("pm_sections").select("*").eq("case_id", case_id).eq("section_type", section_type).execute()
+        
+        if existing_section.data:
+            # Update existing section
+            section_result = supabase.table("pm_sections").update({
+                "ai_content": ai_content,
+                "version": existing_section.data[0]["version"] + 1,
+                "updated_at": "NOW()"
+            }).eq("id", existing_section.data[0]["id"]).execute()
+        else:
+            # Create new section
+            section_result = supabase.table("pm_sections").insert({
+                "case_id": case_id,
+                "section_type": section_type,
+                "title": section_type.replace("_", " ").title(),
+                "ai_content": ai_content,
+                "version": 1
+            }).execute()
         
         return section_result.data[0]
         

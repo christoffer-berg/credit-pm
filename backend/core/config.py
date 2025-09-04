@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     bolagsverket_api_key: str = os.getenv("BOLAGSVERKET_API_KEY", "")
     require_auth: bool = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
     
+    # OpenRouter configuration
+    openrouter_url: str = os.getenv("open_router_url", "https://openrouter.ai/api/v1/chat/completions")
+    openrouter_authorization: str = os.getenv("Authorization", "")
+    
     class Config:
         env_file = ".env"
 

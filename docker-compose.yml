@@ -33,6 +33,8 @@ services:
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - BOLAGSVERKET_API_KEY=${BOLAGSVERKET_API_KEY}
+      - open_router_url=https://openrouter.ai/api/v1/chat/completions
+      - Authorization=Bearer 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
     depends_on:
       - db
 

@@ -3,6 +3,7 @@ from typing import Dict, Optional, Any
 from core.config import settings
 from core.database import get_supabase
 from services.financial_processor import calculate_financial_ratios, generate_financial_forecast, calculate_credit_score
+from services.market_analysis import market_analysis_service
 
 # Initialize OpenAI client
 client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
@@ -23,7 +24,7 @@ async def generate_section_content(
     prompts = {
         "purpose": generate_purpose_prompt,
         "business_description": generate_business_description_prompt,
-        "market_analysis": generate_market_analysis_prompt,
+        "market_analysis": generate_market_analysis_with_openrouter,
         "financial_analysis": generate_financial_analysis_prompt,
         "credit_analysis": generate_credit_analysis_prompt,
         "credit_proposal": generate_credit_proposal_prompt,
@@ -33,6 +34,14 @@ async def generate_section_content(
         raise ValueError(f"Unknown section type: {section_type}")
     
     try:
+        # Special handling for market_analysis which uses OpenRouter
+        if section_type == "market_analysis":
+            content = await prompts[section_type](company, case, context_data)
+            # Log the AI generation for audit
+            await log_ai_generation(case["id"], section_type, "Market analysis using OpenRouter", content, "perplexity/sonar")
+            return content
+        
+        # Regular handling for other sections using OpenAI
         prompt = prompts[section_type](company, case, context_data)
         
         response = client.chat.completions.create(
@@ -95,7 +104,108 @@ def generate_business_description_prompt(company: Optional[Dict], case: Dict, co
     Write 2-3 paragraphs with professional banking language.
     """
 
-def generate_market_analysis_prompt(company: Optional[Dict], case: Dict, context: Optional[Dict] = None) -> str:
+async def generate_market_analysis_with_openrouter(company: Optional[Dict], case: Dict, context: Optional[Dict] = None) -> str:
+    """
+    Generate market analysis using OpenRouter with perplexity/sonar model.
+    """
+    if not company:
+        return "Market analysis requires company information."
+    
+    business_area = company.get("business_description", company.get("name", "Unknown business"))
+    country = "sweden"  # Default country, could be made configurable
+    
+    try:
+        # For now, let's use a simpler approach to avoid timeouts
+        # Generate just one analysis type instead of comprehensive to test
+        queries_result = await market_analysis_service.generate_search_queries(
+            business_area=business_area,
+            analysis_type="market_demand",
+            country=country
+        )
+        
+        if "error" not in queries_result:
+            search_queries = queries_result.get("searchQueries", [])
+            if search_queries:
+                research_content = await market_analysis_service.conduct_market_research(
+                    business_area=business_area,
+                    search_queries=search_queries,
+                    analysis_type="market_demand",
+                    country=country
+                )
+                
+                if research_content and len(research_content.strip()) > 50:
+                    return f"""# Market Analysis for {company.get('name', 'Company')}
+
+**Business Area:** {business_area}
+**Market:** {country.title()}
+
+## Market Demand Analysis
+
+{research_content}
+
+**Research Queries Used:**
+{chr(10).join([f'- {query}' for query in search_queries])}
+"""
+        
+        # If simple analysis fails, fall back to comprehensive
+        print("Simple market analysis failed, trying comprehensive analysis...")
+        analysis_result = await market_analysis_service.generate_comprehensive_market_analysis(
+            business_area=business_area,
+            country=country
+        )
+        
+        # Check if the analysis was successful
+        if not analysis_result or "error" in analysis_result:
+            print(f"Market analysis failed, falling back to OpenAI: {analysis_result.get('error', 'Unknown error')}")
+            return generate_market_analysis_fallback(company, case, context)
+        
+        # Format the results into a comprehensive market analysis
+        analysis_content = f"# Market Analysis for {company.get('name', 'Company')}\n\n"
+        analysis_content += f"**Business Area:** {business_area}\n"
+        analysis_content += f"**Market:** {country.title()}\n\n"
+        
+        analyses = analysis_result.get("analyses", {})
+        if not analyses:
+            print("No analyses found in result, falling back to OpenAI")
+            return generate_market_analysis_fallback(company, case, context)
+        
+        successful_analyses = 0
+        for analysis_type, analysis_data in analyses.items():
+            section_title = analysis_type.replace("_", " ").title()
+            analysis_content += f"## {section_title}\n\n"
+            
+            if "error" in analysis_data:
+                analysis_content += f"*Analysis unavailable: {analysis_data['error']}*\n\n"
+                continue
+            
+            research_content = analysis_data.get("research_content", "")
+            if research_content and len(research_content.strip()) > 0:
+                analysis_content += f"{research_content}\n\n"
+                successful_analyses += 1
+            
+            search_queries = analysis_data.get("search_queries", [])
+            if search_queries:
+                analysis_content += f"**Research Queries:**\n"
+                for query in search_queries:
+                    analysis_content += f"- {query}\n"
+                analysis_content += "\n"
+        
+        # If no successful analyses, fall back to OpenAI
+        if successful_analyses == 0:
+            print("No successful analyses, falling back to OpenAI")
+            return generate_market_analysis_fallback(company, case, context)
+        
+        return analysis_content
+        
+    except Exception as e:
+        # Fallback to original OpenAI-based analysis
+        print(f"Market analysis with OpenRouter failed: {e}")
+        return generate_market_analysis_fallback(company, case, context)
+
+def generate_market_analysis_fallback(company: Optional[Dict], case: Dict, context: Optional[Dict] = None) -> str:
+    """
+    Fallback market analysis using OpenAI if OpenRouter fails.
+    """
     industry_code = company.get("industry_code", "general industry") if company else "general industry"
     company_name = company.get("name", "the company") if company else "the company"
     
