@@ -14,7 +14,7 @@ export function Dashboard() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [cases, setCases] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchCases = async () => {
     console.log('Dashboard: Fetching cases...')
@@ -22,24 +22,12 @@ export function Dashboard() {
     setError(null)
     
     try {
-      // Try direct fetch first
-      const response = await fetch('/api/v1/cases', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      
-      console.log('Dashboard: Response status:', response.status, response.statusText)
-      
-      if (response.ok) {
-        const data = await response.json()
-        console.log('Dashboard: SUCCESS! Got', data.length, 'cases')
-        setCases(data)
-      } else {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      const data = await apiClient.getCases()
+      console.log('Dashboard: SUCCESS! Got', Array.isArray(data) ? data.length : 0, 'cases')
+      setCases(data as any)
     } catch (err) {
       console.error('Dashboard: Error fetching cases:', err)
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'An unknown error occurred')
     } finally {
       setIsLoading(false)
     }
@@ -93,7 +81,7 @@ export function Dashboard() {
               <CardHeader>
                 <CardTitle>Error Loading Cases</CardTitle>
                 <CardDescription className="text-red-600">
-                  {error instanceof Error ? error.message : 'An error occurred'}
+                  {error || 'An error occurred'}
                 </CardDescription>
               </CardHeader>
               <CardContent>

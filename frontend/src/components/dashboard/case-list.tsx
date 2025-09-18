@@ -39,16 +39,9 @@ export function CaseList({ cases, onRefetch }: CaseListProps) {
     setDeletingCases(prev => new Set(prev.add(caseId)))
 
     try {
-      const response = await fetch(`/api/v1/cases/${caseId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      })
-
-      if (response.ok) {
-        onRefetch() // Refresh the case list
-      } else {
-        throw new Error(`Failed to delete case: ${response.status}`)
-      }
+      const { apiClient } = await import('@/lib/api-client')
+      await apiClient.deleteCase(caseId)
+      onRefetch()
     } catch (err) {
       console.error('Error deleting case:', err)
       alert('Failed to delete case. Please try again.')

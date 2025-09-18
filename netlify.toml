@@ -1,0 +1,20 @@
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--force"
+
+[[redirects]]
+  from = "/api/v1/*"
+  to = "https://your-railway-app.railway.app/api/v1/:splat"
+  status = 200
+  force = true
+
+# Handle Next.js routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

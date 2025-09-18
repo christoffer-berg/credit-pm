@@ -25,22 +25,12 @@ export function CreateCaseDialog({ open, onOpenChange, onCaseCreated }: CreateCa
     setError('')
 
     try {
-      const response = await fetch('/api/v1/cases', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          organization_number: organizationNumber,
-          title: title || undefined,
-        } as CreatePMCaseRequest),
+      // Use centralized API client to respect NEXT_PUBLIC_API_URL
+      const { apiClient } = await import('@/lib/api-client')
+      await apiClient.createCase({
+        organization_number: organizationNumber,
+        title: title || undefined,
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('API Error:', errorData)
-        throw new Error(errorData.error || errorData.details || 'Failed to create case')
-      }
 
       setOrganizationNumber('')
       setTitle('')

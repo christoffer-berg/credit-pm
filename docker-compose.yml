@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -8,8 +6,9 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend:/app:cached
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -25,29 +24,19 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
+      - ./backend:/app:cached
+      - backend_pycache:/app/__pycache__
     environment:
       - ENVIRONMENT=development
-      - DATABASE_URL=${DATABASE_URL}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - BOLAGSVERKET_API_KEY=${BOLAGSVERKET_API_KEY}
-      - open_router_url=https://openrouter.ai/api/v1/chat/completions
-      - Authorization=Bearer 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
-    depends_on:
-      - db
-
-  db:
-    image: supabase/postgres:15.1.1.78
-    ports:
-      - "54322:5432"
-    environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=credit_pm
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - OPENROUTER_URL=${OPENROUTER_URL}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
 
 volumes:
-  postgres_data:
+  frontend_node_modules:
+  frontend_next:
+  backend_pycache:
+

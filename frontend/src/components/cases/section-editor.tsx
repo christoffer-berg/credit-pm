@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +20,6 @@ export function SectionEditor({ section, onRegenerate, isRegenerating }: Section
   const [userContent, setUserContent] = useState(section.user_content || section.ai_content || '')
   const [showAiContent, setShowAiContent] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
-  const supabase = useSupabaseClient()
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -32,17 +30,8 @@ export function SectionEditor({ section, onRegenerate, isRegenerating }: Section
 
   const updateSectionMutation = useMutation({
     mutationFn: async (data: UpdateSectionRequest) => {
-      const session = await supabase.auth.getSession()
-      const response = await fetch(`/api/v1/sections/${section.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${session.data.session?.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
-      if (!response.ok) throw new Error('Failed to update section')
-      return response.json()
+      const { apiClient } = await import('@/lib/api-client')
+      return apiClient.updateSection(section.id, data)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sections', section.case_id] })

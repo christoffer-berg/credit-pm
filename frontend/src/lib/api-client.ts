@@ -1,4 +1,5 @@
 import { createClient } from './supabase'
+import type { PMCase, PMSection } from '@/types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
@@ -64,11 +65,11 @@ class ApiClient {
   }
 
   // Cases
-  async getCases() {
+  async getCases(): Promise<PMCase[]> {
     console.log('ApiClient: Fetching cases...')
     try {
-      const result = await this.request('/api/v1/cases')
-      console.log('ApiClient: Got cases:', result?.length || 0)
+      const result = await this.request<PMCase[]>('/api/v1/cases')
+      console.log('ApiClient: Got cases:', Array.isArray(result) ? result.length : 0)
       return result
     } catch (error) {
       console.error('ApiClient: Failed to fetch cases:', error)
@@ -76,30 +77,36 @@ class ApiClient {
     }
   }
 
-  async getCase(id: string) {
-    return this.request(`/api/v1/cases/${id}`)
+  async getCase(id: string): Promise<PMCase> {
+    return this.request<PMCase>(`/api/v1/cases/${id}`)
   }
 
-  async createCase(data: { organization_number: string; title?: string }) {
-    return this.request('/api/v1/cases', {
+  async createCase(data: { organization_number: string; title?: string }): Promise<PMCase> {
+    return this.request<PMCase>('/api/v1/cases', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  // Sections
-  async getSections(caseId: string) {
-    return this.request(`/api/v1/sections/${caseId}`)
+  async deleteCase(id: string): Promise<void> {
+    return this.request<void>(`/api/v1/cases/${id}`, {
+      method: 'DELETE',
+    })
   }
 
-  async generateSection(caseId: string, sectionType: string) {
-    return this.request(`/api/v1/sections/${caseId}/generate?section_type=${sectionType}`, {
+  // Sections
+  async getSections(caseId: string): Promise<PMSection[]> {
+    return this.request<PMSection[]>(`/api/v1/sections/${caseId}`)
+  }
+
+  async generateSection(caseId: string, sectionType: string): Promise<PMSection> {
+    return this.request<PMSection>(`/api/v1/sections/${caseId}/generate?section_type=${sectionType}`, {
       method: 'POST',
     })
   }
 
-  async updateSection(sectionId: string, data: { user_content: string }) {
-    return this.request(`/api/v1/sections/${sectionId}`, {
+  async updateSection(sectionId: string, data: { user_content: string }): Promise<PMSection> {
+    return this.request<PMSection>(`/api/v1/sections/${sectionId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     })
