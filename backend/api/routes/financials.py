@@ -3,6 +3,7 @@ from typing import List, Optional, Any, Dict
 import os
 import json
 from datetime import datetime
+from pathlib import Path
 
 from schemas.financial_data import (
     FinancialStatement, FinancialDataCreate, FinancialDataUpdate, 
@@ -101,9 +102,6 @@ async def upload_financial_pdf(
     if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
-    if file.size and file.size > 50 * 1024 * 1024:  # 50MB limit
-        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
-    
     supabase = get_supabase()
     
     try:
@@ -114,6 +112,10 @@ async def upload_financial_pdf(
         
         # Read file content
         file_content = await file.read()
+        
+        # Enforce 50MB size limit using actual bytes read
+        if len(file_content) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File too large (max 50MB)")
         
         # Parse PDF
         parse_result = await parse_financial_pdf_file(file_content, file.filename, company_id)
@@ -128,7 +130,7 @@ async def upload_financial_pdf(
             "parsing_status": parse_result["parsing_status"],
             "extracted_data": parse_result.get("extracted_data"),
             "error_message": parse_result.get("error_message"),
-            "uploaded_by": current_user.get("id") if current_user else None
+            "uploaded_by": (current_user.get("id") if isinstance(current_user, dict) else None) if current_user else None
         }).execute()
         
         # If parsing was successful, store financial statements
@@ -196,7 +198,8 @@ async def create_financial_statement(
         if not company_result.data:
             raise HTTPException(status_code=404, detail="Company not found")
         
-        statement_data = statement.dict()
+        # Use Pydantic v2 JSON mode to ensure date/Decimal are serializable
+        statement_data = statement.model_dump(mode="json")
         statement_data["company_id"] = company_id
         
         # Check if statement already exists for this year
@@ -238,7 +241,8 @@ async def update_financial_statement(
         if not statement_update.financial_statements:
             raise HTTPException(status_code=400, detail="No financial statement data provided")
         
-        update_data = statement_update.financial_statements[0].dict()
+        # Ensure JSON-serializable types for Supabase
+        update_data = statement_update.financial_statements[0].model_dump(mode="json")
         update_data["updated_at"] = "NOW()"
         
         result = supabase.table("financial_statements").update(update_data).eq("id", statement_id).execute()
@@ -412,6 +416,54 @@ async def get_financial_documents(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving documents: {str(e)}")
+
+@router.delete("/documents/{document_id}")
+async def delete_financial_document(
+    document_id: str,
+    delete_statements: Optional[bool] = Query(False, description="Also delete financial statements parsed from this document"),
+    current_user: Optional[Any] = Depends(optional_auth())
+):
+    """Delete an uploaded financial document and optionally its parsed statements"""
+    supabase = get_supabase()
+    try:
+        # Fetch document
+        existing = supabase.table("financial_documents").select("*").eq("id", document_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        doc = existing.data[0]
+
+        # Attempt to remove file from filesystem
+        file_path = doc.get("file_path")
+        if file_path:
+            try:
+                path = Path(file_path)
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                # Do not fail the whole request if file deletion fails
+                pass
+
+        # Optionally delete parsed statements sourced from this document
+        deleted_statements = 0
+        if delete_statements:
+            try:
+                del_res = supabase.table("financial_statements").delete() \
+                    .eq("company_id", doc.get("company_id")) \
+                    .eq("source_document", doc.get("filename")).execute()
+                if del_res.data:
+                    deleted_statements = len(del_res.data)
+            except Exception:
+                # Keep proceeding even if this fails
+                pass
+
+        # Delete document record
+        supabase.table("financial_documents").delete().eq("id", document_id).execute()
+
+        return {"message": "Document deleted", "deleted_statements": deleted_statements}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 @router.delete("/statements/{statement_id}")
 async def delete_financial_statement(

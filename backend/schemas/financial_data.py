@@ -60,7 +60,8 @@ class FinancialDataUpdate(BaseModel):
 class FinancialProjection(BaseModel):
     year: int
     revenue_growth: Optional[Decimal] = None
-    margin_assumptions: Dict[str, Decimal] = {}
+    # Allow mixed types coming from calculations/DB JSON
+    margin_assumptions: Dict[str, Any] = {}
     projected_revenue: Optional[Decimal] = None
     projected_ebitda: Optional[Decimal] = None
     projected_net_profit: Optional[Decimal] = None

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
+// import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,7 +36,7 @@ export function AllabolagFetcher({ companyId, companyName, orgNumber, onSuccess 
   const [searchQuery, setSearchQuery] = useState(orgNumber || companyName)
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<FetchResult | null>(null)
-  const supabase = useSupabaseClient()
+  // const supabase = useSupabaseClient()
 
   const handleFetch = async () => {
     if (!searchQuery.trim()) return
@@ -44,28 +45,18 @@ export function AllabolagFetcher({ companyId, companyName, orgNumber, onSuccess 
     setResult(null)
 
     try {
-      const session = await supabase.auth.getSession()
-      const params = new URLSearchParams({
+      const data = (await apiClient.fetchAllabolag(companyId, {
         query: searchQuery.trim(),
-        ...(orgNumber && { org_number: orgNumber })
-      })
+        ...(orgNumber ? { org_number: orgNumber } : {}),
+      })) as FetchResult['data']
 
-      const response = await fetch(`/api/v1/financials/companies/${companyId}/allabolag?${params}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.data.session?.access_token}`,
-        },
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
+      if (data) {
         setResult({ success: true, data })
         onSuccess?.()
       } else {
         setResult({ 
           success: false, 
-          error: data.detail || 'Failed to fetch data from Allabolag.se' 
+          error: 'Failed to fetch data from Allabolag.se' 
         })
       }
     } catch (error) {

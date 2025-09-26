@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
+// Supabase client no longer needed here; apiClient handles auth
+// import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { apiClient } from '@/lib/api-client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -38,40 +40,26 @@ interface FinancialOverview {
 export function FinancialDataManager({ companyId, companyName, orgNumber }: FinancialDataManagerProps) {
   const [activeTab, setActiveTab] = useState('overview')
   const [showStatementsEditor, setShowStatementsEditor] = useState(false)
-  const supabase = useSupabaseClient()
+  const [prefillStatements, setPrefillStatements] = useState<any[] | undefined>(undefined)
+  const [reviewDoc, setReviewDoc] = useState<any | null>(null)
+  // const supabase = useSupabaseClient()
   const queryClient = useQueryClient()
 
   // Fetch financial overview
   const { data: overview, isLoading, error } = useQuery<FinancialOverview>({
     queryKey: ['financial-overview', companyId],
-    queryFn: async () => {
-      const session = await supabase.auth.getSession()
-      const response = await fetch(`/api/v1/financials/companies/${companyId}/overview`, {
-        headers: {
-          'Authorization': `Bearer ${session.data.session?.access_token}`,
-        },
-      })
-      if (!response.ok) {
-        throw new Error('Failed to fetch financial overview')
-      }
-      return response.json()
-    },
+    queryFn: async () => apiClient.getFinancialOverview(companyId),
+  })
+
+  // Fetch uploaded documents (full data including extracted_data)
+  const { data: documents } = useQuery<any[]>({
+    queryKey: ['financial-documents', companyId],
+    queryFn: async () => apiClient.getFinancialDocuments(companyId),
   })
 
   // Generate projections
   const generateProjections = useMutation({
-    mutationFn: async () => {
-      const session = await supabase.auth.getSession()
-      const response = await fetch(`/api/v1/financials/companies/${companyId}/projections`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.data.session?.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      if (!response.ok) throw new Error('Failed to generate projections')
-      return response.json()
-    },
+    mutationFn: async () => apiClient.generateFinancialProjections(companyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
     },
@@ -79,18 +67,7 @@ export function FinancialDataManager({ companyId, companyName, orgNumber }: Fina
 
   // Generate AI analysis
   const generateAnalysis = useMutation({
-    mutationFn: async () => {
-      const session = await supabase.auth.getSession()
-      const response = await fetch(`/api/v1/financials/companies/${companyId}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.data.session?.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      if (!response.ok) throw new Error('Failed to generate analysis')
-      return response.json()
-    },
+    mutationFn: async () => apiClient.generateFinancialAnalysis(companyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
     },
@@ -195,7 +172,10 @@ export function FinancialDataManager({ companyId, companyName, orgNumber }: Fina
                   </p>
                   <PDFUploader 
                     companyId={companyId}
-                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })}
+                    onSuccess={() => {
+                      queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
+                      queryClient.invalidateQueries({ queryKey: ['financial-documents', companyId] })
+                    }}
                   />
                 </div>
               </Card>
@@ -207,28 +187,61 @@ export function FinancialDataManager({ companyId, companyName, orgNumber }: Fina
                   <p className="text-sm text-muted-foreground">
                     Enter financial data manually
                   </p>
-                  <Dialog open={showStatementsEditor} onOpenChange={setShowStatementsEditor}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Enter Data
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Financial Statements Editor</DialogTitle>
-                      </DialogHeader>
-                      <FinancialStatementsEditor 
-                        companyId={companyId}
-                        onSave={() => {
-                          setShowStatementsEditor(false)
-                          queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      setPrefillStatements(undefined)
+                      setShowStatementsEditor(true)
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Enter Data
+                  </Button>
                 </div>
               </Card>
+            </div>
+
+            {/* Uploaded Documents */}
+            <div className="mt-6">
+              <h3 className="font-semibold mb-2">Uploaded Documents</h3>
+              {documents && documents.length > 0 ? (
+                <div className="space-y-2">
+                  {documents.slice(0,5).map((doc: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center border rounded p-2">
+                      <div className="truncate">
+                        <div className="font-medium truncate">{doc.filename}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Status: {doc.parsing_status} • {new Date(doc.upload_date || doc.created_at || Date.now()).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setReviewDoc(doc)}>Review</Button>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={async () => {
+                            const confirmDel = window.confirm('Delete this document? You can also delete any statements parsed from it in the next step.')
+                            if (!confirmDel) return
+                            const also = window.confirm('Also delete financial statements parsed from this document?')
+                            try {
+                              await apiClient.deleteFinancialDocument(doc.id, { deleteStatements: also })
+                              queryClient.invalidateQueries({ queryKey: ['financial-documents', companyId] })
+                              queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
+                            } catch (e) {
+                              alert('Failed to delete document')
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">No documents uploaded yet</div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -301,30 +314,66 @@ export function FinancialDataManager({ companyId, companyName, orgNumber }: Fina
                     {generateAnalysis.isPending ? 'Analyzing...' : 'Generate AI Analysis'}
                   </Button>
 
-                  <Dialog open={showStatementsEditor} onOpenChange={setShowStatementsEditor}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" className="w-full">
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit Financial Data
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Financial Statements Editor</DialogTitle>
-                      </DialogHeader>
-                      <FinancialStatementsEditor 
-                        companyId={companyId}
-                        existingData={overview?.historical_statements}
-                        onSave={() => {
-                          setShowStatementsEditor(false)
-                          queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
-                        }}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => {
+                      setPrefillStatements(undefined)
+                      setShowStatementsEditor(true)
+                    }}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Financial Data
+                  </Button>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Uploaded Documents */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Uploaded Documents</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {documents && documents.length > 0 ? (
+                  <div className="space-y-2">
+                    {documents.slice(0,5).map((doc: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center border rounded p-2">
+                        <div className="truncate">
+                          <div className="font-medium truncate">{doc.filename}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Status: {doc.parsing_status} • {new Date(doc.upload_date || doc.created_at || Date.now()).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setReviewDoc(doc)}>Review</Button>
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={async () => {
+                              const confirmDel = window.confirm('Delete this document? You can also delete any statements parsed from it in the next step.')
+                              if (!confirmDel) return
+                              const also = window.confirm('Also delete financial statements parsed from this document?')
+                              try {
+                                await apiClient.deleteFinancialDocument(doc.id, { deleteStatements: also })
+                                queryClient.invalidateQueries({ queryKey: ['financial-documents', companyId] })
+                                queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
+                              } catch (e) {
+                                alert('Failed to delete document')
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">No uploaded documents</div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="statements">
@@ -354,6 +403,72 @@ export function FinancialDataManager({ companyId, companyName, orgNumber }: Fina
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Review Document Dialog */}
+      <Dialog open={!!reviewDoc} onOpenChange={(open) => !open && setReviewDoc(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Review Parsed Results</DialogTitle>
+          </DialogHeader>
+          {reviewDoc && (
+            <div className="space-y-3">
+              <div>
+                <div className="font-medium">{reviewDoc.filename}</div>
+                <div className="text-sm text-muted-foreground">Status: {reviewDoc.parsing_status}</div>
+              </div>
+              <div className="text-sm">
+                <div>Statements found: {Array.isArray(reviewDoc.extracted_data?.financial_statements) ? reviewDoc.extracted_data.financial_statements.length : 0}</div>
+                <div>Years: {Array.isArray(reviewDoc.extracted_data?.years_found) ? reviewDoc.extracted_data.years_found.join(', ') : '—'}</div>
+                <div>Pages: {reviewDoc.extracted_data?.raw_content?.page_count ?? '—'} • Tables: {reviewDoc.extracted_data?.raw_content?.table_count ?? '—'}</div>
+              </div>
+              {reviewDoc.extracted_data?.raw_content?.text_preview && (
+                <div className="bg-gray-50 rounded p-2 text-xs max-h-40 overflow-auto">
+                  {reviewDoc.extracted_data.raw_content.text_preview}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setReviewDoc(null)}>Close</Button>
+                {Array.isArray(reviewDoc.extracted_data?.financial_statements) && reviewDoc.extracted_data.financial_statements.length > 0 ? (
+                  <Button onClick={() => {
+                    setPrefillStatements(reviewDoc.extracted_data.financial_statements)
+                    setShowStatementsEditor(true)
+                    setReviewDoc(null)
+                  }}>
+                    Load into Editor
+                  </Button>
+                ) : (
+                  <Button onClick={() => {
+                    setPrefillStatements(undefined)
+                    setShowStatementsEditor(true)
+                    setReviewDoc(null)
+                  }}>
+                    Open Editor (manual)
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Statements Editor Dialog when prefilling parsed data */}
+      <Dialog open={showStatementsEditor} onOpenChange={(open) => { setShowStatementsEditor(open); if (!open) setPrefillStatements(undefined) }}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Financial Statements Editor</DialogTitle>
+          </DialogHeader>
+          <FinancialStatementsEditor 
+            companyId={companyId}
+            existingData={prefillStatements || overview?.historical_statements}
+            onSave={() => {
+              setShowStatementsEditor(false)
+              setPrefillStatements(undefined)
+              queryClient.invalidateQueries({ queryKey: ['financial-overview', companyId] })
+              queryClient.invalidateQueries({ queryKey: ['financial-documents', companyId] })
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

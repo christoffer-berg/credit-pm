@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
+// import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { apiClient } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -23,7 +24,7 @@ interface UploadStatus {
 
 export function PDFUploader({ companyId, onSuccess }: PDFUploaderProps) {
   const [uploads, setUploads] = useState<UploadStatus[]>([])
-  const supabase = useSupabaseClient()
+  // const supabase = useSupabaseClient()
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newUploads = acceptedFiles.map(file => ({
@@ -53,75 +54,18 @@ export function PDFUploader({ companyId, onSuccess }: PDFUploaderProps) {
         i === index ? { ...upload, status: 'uploading', progress: 0 } : upload
       ))
 
-      const session = await supabase.auth.getSession()
-      const formData = new FormData()
-      formData.append('file', file)
+      // Use centralized API client; we won't have granular progress but uploads are small
+      const response = await apiClient.uploadFinancials(companyId, file)
 
-      const xhr = new XMLHttpRequest()
-      
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100)
-          setUploads(prev => prev.map((upload, i) => 
-            i === index ? { ...upload, progress } : upload
-          ))
-        }
-      }
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          setUploads(prev => prev.map((upload, i) => 
-            i === index ? { 
-              ...upload, 
-              status: 'processing',
-              progress: 100,
-            } : upload
-          ))
-
-          // Parse the response to get extracted data
-          try {
-            const response = JSON.parse(xhr.responseText)
-            setUploads(prev => prev.map((upload, i) => 
-              i === index ? { 
-                ...upload, 
-                status: 'completed',
-                extractedData: response
-              } : upload
-            ))
-            onSuccess?.()
-          } catch (parseError) {
-            setUploads(prev => prev.map((upload, i) => 
-              i === index ? { 
-                ...upload, 
-                status: 'error',
-                error: 'Failed to parse response'
-              } : upload
-            ))
-          }
-        } else {
-          setUploads(prev => prev.map((upload, i) => 
-            i === index ? { 
-              ...upload, 
-              status: 'error',
-              error: `Upload failed: ${xhr.statusText}`
-            } : upload
-          ))
-        }
-      }
-
-      xhr.onerror = () => {
-        setUploads(prev => prev.map((upload, i) => 
-          i === index ? { 
-            ...upload, 
-            status: 'error',
-            error: 'Network error during upload'
-          } : upload
-        ))
-      }
-
-      xhr.open('POST', `/api/v1/financials/companies/${companyId}/upload-pdf`)
-      xhr.setRequestHeader('Authorization', `Bearer ${session.data.session?.access_token}`)
-      xhr.send(formData)
+      setUploads(prev => prev.map((upload, i) => 
+        i === index ? { 
+          ...upload, 
+          status: 'completed',
+          progress: 100,
+          extractedData: response
+        } : upload
+      ))
+      onSuccess?.()
 
     } catch (error) {
       setUploads(prev => prev.map((upload, i) => 
@@ -161,7 +105,12 @@ export function PDFUploader({ companyId, onSuccess }: PDFUploaderProps) {
       case 'processing':
         return 'Processing PDF...'
       case 'completed':
-        return `Extracted ${upload.extractedData?.statements_found || 0} financial statements`
+        // Backend returns PDFUploadResponse with extracted_data.financial_statements
+        return `Extracted ${
+          Array.isArray(upload.extractedData?.extracted_data?.financial_statements)
+            ? upload.extractedData.extracted_data.financial_statements.length
+            : 0
+        } financial statements`
       case 'error':
         return upload.error || 'Upload failed'
       default:
@@ -245,7 +194,9 @@ export function PDFUploader({ companyId, onSuccess }: PDFUploaderProps) {
                     {upload.status === 'completed' && upload.extractedData && (
                       <div className="mt-2 text-xs text-green-600">
                         ✓ Successfully extracted financial data for years: {
-                          upload.extractedData.years_extracted?.join(', ') || 'Unknown'
+                          Array.isArray(upload.extractedData.extracted_data?.years_found)
+                            ? upload.extractedData.extracted_data.years_found.join(', ')
+                            : 'Unknown'
                         }
                       </div>
                     )}

@@ -459,7 +459,7 @@ async def create_financial_projections(
         
         return {
             'success': True,
-            'projections': [proj.dict() for proj in projections],
+            'projections': [proj.model_dump(mode="json") for proj in projections],
             'key_metrics': key_metrics,
             'assumptions': projection_assumptions.__dict__,
             'confidence_level': projections[0].confidence_level if projections else 'low'

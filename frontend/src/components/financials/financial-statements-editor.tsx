@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSupabaseClient } from '@supabase/auth-helpers-react'
+// import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { apiClient } from '@/lib/api-client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,12 +75,14 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
   const [statements, setStatements] = useState<FinancialStatement[]>([])
   const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear() - 1)
   const [saving, setSaving] = useState(false)
-  const supabase = useSupabaseClient()
+  // const supabase = useSupabaseClient()
 
   useEffect(() => {
     if (existingData.length > 0) {
-      setStatements(existingData)
-      setActiveYear(Math.max(...existingData.map(s => s.year)))
+      // Clone to avoid mutating props and to stabilize references
+      const cloned = existingData.map(s => ({ ...s }))
+      setStatements(cloned)
+      setActiveYear(Math.max(...cloned.map(s => s.year)))
     } else {
       setStatements([emptyStatement(new Date().getFullYear() - 1)])
     }
@@ -110,21 +113,8 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
   const handleSave = async () => {
     setSaving(true)
     try {
-      const session = await supabase.auth.getSession()
-      
       for (const statement of statements) {
-        const response = await fetch(`/api/v1/financials/companies/${companyId}/statements`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.data.session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(statement)
-        })
-        
-        if (!response.ok) {
-          throw new Error(`Failed to save statement for ${statement.year}`)
-        }
+        await apiClient.saveFinancialStatement(companyId, statement)
       }
 
       onSave?.()
@@ -140,12 +130,16 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
   const availableYears = statements.map(s => s.year).sort((a, b) => b - a)
 
   const formatNumber = (value: number | undefined): string => {
-    return value ? (value / 1000000).toFixed(2) : ''
+    if (value === undefined || value === null) return ''
+    const scaled = value / 1_000_000
+    return String(scaled)
   }
 
   const parseNumber = (value: string): number | undefined => {
-    const num = parseFloat(value)
-    return isNaN(num) ? undefined : num * 1000000
+    if (value === '' || value === undefined || value === null) return undefined
+    const normalized = value.replace(/\s/g, '').replace(',', '.')
+    const num = parseFloat(normalized)
+    return isNaN(num) ? undefined : num * 1_000_000
   }
 
   return (
@@ -260,7 +254,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="revenue"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.revenue)}
                       onChange={(e) => updateStatement(activeYear, 'revenue', parseNumber(e.target.value))}
@@ -293,7 +289,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="opex"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.operating_expenses)}
                       onChange={(e) => updateStatement(activeYear, 'operating_expenses', parseNumber(e.target.value))}
@@ -304,7 +302,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="ebitda"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.ebitda)}
                       onChange={(e) => updateStatement(activeYear, 'ebitda', parseNumber(e.target.value))}
@@ -315,7 +315,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="depreciation"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.depreciation)}
                       onChange={(e) => updateStatement(activeYear, 'depreciation', parseNumber(e.target.value))}
@@ -329,7 +331,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="ebit"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.ebit)}
                       onChange={(e) => updateStatement(activeYear, 'ebit', parseNumber(e.target.value))}
@@ -340,7 +344,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="financial-income"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.financial_income)}
                       onChange={(e) => updateStatement(activeYear, 'financial_income', parseNumber(e.target.value))}
@@ -351,7 +357,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="financial-expenses"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.financial_expenses)}
                       onChange={(e) => updateStatement(activeYear, 'financial_expenses', parseNumber(e.target.value))}
@@ -362,7 +370,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="profit-before-tax"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.profit_before_tax)}
                       onChange={(e) => updateStatement(activeYear, 'profit_before_tax', parseNumber(e.target.value))}
@@ -373,7 +383,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="tax-expense"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.tax_expense)}
                       onChange={(e) => updateStatement(activeYear, 'tax_expense', parseNumber(e.target.value))}
@@ -384,7 +396,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="net-profit"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.net_profit)}
                       onChange={(e) => updateStatement(activeYear, 'net_profit', parseNumber(e.target.value))}
@@ -403,7 +417,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="current-assets"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.current_assets)}
                       onChange={(e) => updateStatement(activeYear, 'current_assets', parseNumber(e.target.value))}
@@ -414,7 +430,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="fixed-assets"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.fixed_assets)}
                       onChange={(e) => updateStatement(activeYear, 'fixed_assets', parseNumber(e.target.value))}
@@ -425,7 +443,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="total-assets"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.total_assets)}
                       onChange={(e) => updateStatement(activeYear, 'total_assets', parseNumber(e.target.value))}
@@ -450,7 +470,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="current-liabilities"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.current_liabilities)}
                       onChange={(e) => updateStatement(activeYear, 'current_liabilities', parseNumber(e.target.value))}
@@ -461,7 +483,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="long-term-liabilities"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.long_term_liabilities)}
                       onChange={(e) => updateStatement(activeYear, 'long_term_liabilities', parseNumber(e.target.value))}
@@ -472,7 +496,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="total-liabilities"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.total_liabilities)}
                       onChange={(e) => updateStatement(activeYear, 'total_liabilities', parseNumber(e.target.value))}
@@ -483,7 +509,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="equity"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.equity)}
                       onChange={(e) => updateStatement(activeYear, 'equity', parseNumber(e.target.value))}
@@ -501,7 +529,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="operating-cash-flow"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.operating_cash_flow)}
                       onChange={(e) => updateStatement(activeYear, 'operating_cash_flow', parseNumber(e.target.value))}
@@ -512,7 +542,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="investing-cash-flow"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.investing_cash_flow)}
                       onChange={(e) => updateStatement(activeYear, 'investing_cash_flow', parseNumber(e.target.value))}
@@ -523,7 +555,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="financing-cash-flow"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.financing_cash_flow)}
                       onChange={(e) => updateStatement(activeYear, 'financing_cash_flow', parseNumber(e.target.value))}
@@ -537,7 +571,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="net-cash-flow"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.net_cash_flow)}
                       onChange={(e) => updateStatement(activeYear, 'net_cash_flow', parseNumber(e.target.value))}
@@ -548,7 +584,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="cash-beginning"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.cash_beginning)}
                       onChange={(e) => updateStatement(activeYear, 'cash_beginning', parseNumber(e.target.value))}
@@ -559,7 +597,9 @@ export function FinancialStatementsEditor({ companyId, existingData = [], onSave
                     <Input
                       id="cash-ending"
                       type="number"
-                      step="0.01"
+                      step="any"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       placeholder="0.00"
                       value={formatNumber(currentStatement.cash_ending)}
                       onChange={(e) => updateStatement(activeYear, 'cash_ending', parseNumber(e.target.value))}

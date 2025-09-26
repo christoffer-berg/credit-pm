@@ -122,13 +122,61 @@ class ApiClient {
   }
 
   // Financials
-  async uploadFinancials(companyId: string, file: File) {
+  async getFinancialOverview(companyId: string): Promise<any> {
+    return this.request<any>(`/api/v1/financials/companies/${companyId}/overview`)
+  }
+
+  async generateFinancialProjections(companyId: string, assumptions?: Record<string, unknown>): Promise<any> {
+    return this.request<any>(`/api/v1/financials/companies/${companyId}/projections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(assumptions || {}),
+    })
+  }
+
+  async generateFinancialAnalysis(companyId: string, caseId?: string): Promise<any> {
+    return this.request<any>(`/api/v1/financials/companies/${companyId}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(caseId ? { case_id: caseId } : {}),
+    })
+  }
+
+  async saveFinancialStatement(companyId: string, statement: unknown): Promise<any> {
+    return this.request<any>(`/api/v1/financials/companies/${companyId}/statements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(statement),
+    })
+  }
+
+  async getFinancialDocuments(companyId: string): Promise<any[]> {
+    return this.request<any[]>(`/api/v1/financials/companies/${companyId}/documents`)
+  }
+
+  async deleteFinancialDocument(documentId: string, options?: { deleteStatements?: boolean }): Promise<void> {
+    const params = new URLSearchParams()
+    if (options?.deleteStatements) params.set('delete_statements', 'true')
+    return this.request<void>(`/api/v1/financials/documents/${documentId}?${params.toString()}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async fetchAllabolag(companyId: string, params: Record<string, string | number | boolean | undefined>): Promise<any> {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) query.append(k, String(v))
+    })
+    return this.request<any>(`/api/v1/financials/companies/${companyId}/allabolag?${query.toString()}`)
+  }
+
+  async uploadFinancials(companyId: string, file: File): Promise<any> {
     const formData = new FormData()
     formData.append('file', file)
 
     const { data: { session } } = await this.supabase.auth.getSession()
     
-    const response = await fetch(`${API_BASE_URL}/api/v1/financials/${companyId}/upload`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/financials/companies/${companyId}/upload-pdf`, {
       method: 'POST',
       headers: {
         ...(session?.access_token && {
@@ -144,10 +192,6 @@ class ApiClient {
     }
 
     return response.json()
-  }
-
-  async getFinancials(companyId: string) {
-    return this.request(`/api/v1/financials/${companyId}`)
   }
 
   // Export
